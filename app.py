@@ -70,10 +70,12 @@ if prompt := st.chat_input("Haga su consulta sobre los RTE"):
                 huggingfacehub_api_token=os.getenv('HUGGINGFACEHUB_API_TOKEN')
             )
             chain = load_qa_chain(llm, chain_type="stuff")
+
+            # Aumentar la longitud máxima de respuesta
+            response = chain.run(input_documents=docs, question=prompt, max_length=500, temperature=0.7)
             
-            # Generar respuesta basada en los documentos relevantes
-            response = chain.run(input_documents=docs, question=prompt)
             st.markdown(response)
             st.session_state.messages.append({"role": "assistant", "content": response})
         except Exception as e:
             st.error(f"Error al procesar la pregunta: {str(e)}")
+
