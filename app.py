@@ -16,24 +16,13 @@ if 'processed_files' not in st.session_state:
 
 def process_files():
     text = ""
-    # Verifica si hay archivos en la carpeta RTE_Procesados
-    if not os.listdir("RTE_Procesados"):
-        raise Exception("No se encontraron archivos en la carpeta RTE_Procesados.")
-
     # Lee los archivos TXT de la carpeta RTE_Procesados
     for file in os.listdir("RTE_Procesados"):
         if file.endswith(".txt"):
             with open(os.path.join("RTE_Procesados", file), 'r', encoding='utf-8') as f:
-                file_content = f.read()
-                if file_content.strip():  # Verifica que el archivo no esté vacío
-                    text += file_content + "\n\n"
-                else:
-                    raise Exception(f"El archivo {file} está vacío o no contiene datos válidos.")
-
-    if not text:  # Verifica que se haya leído algún contenido
-        raise Exception("No se encontró contenido válido en los archivos de texto.")
-
-    # Divide el texto en fragmentos
+                text += f.read() + "\n\n"
+    
+    # Divide el texto
     text_splitter = CharacterTextSplitter(
         separator="\n",
         chunk_size=1000,
@@ -41,12 +30,9 @@ def process_files():
         length_function=len
     )
     chunks = text_splitter.split_text(text)
-
-    if not chunks:  # Verifica que haya fragmentos después de dividir el texto
-        raise Exception("No se pudo dividir el texto en fragmentos adecuados.")
-
-    # Crear embeddings utilizando un modelo más robusto
-    embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-mpnet-base-v2")
+    
+    # Crear embeddings
+    embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2")
     
     # Crear base de datos vectorial
     knowledge_base = FAISS.from_texts(chunks, embeddings)
@@ -75,8 +61,8 @@ if prompt := st.chat_input("Haga su consulta sobre los RTE"):
 
     with st.chat_message("assistant"):
         try:
-            # Buscar más documentos relevantes para mejorar las respuestas
-            docs = st.session_state.knowledge_base.similarity_search(prompt, k=5)
+            # Buscar documentos relevantes
+            docs = st.session_state.knowledge_base.similarity_search(prompt)
             
             # Crear la cadena de QA
             llm = HuggingFaceHub(
@@ -84,10 +70,9 @@ if prompt := st.chat_input("Haga su consulta sobre los RTE"):
                 huggingfacehub_api_token=os.getenv('HUGGINGFACEHUB_API_TOKEN')
             )
             chain = load_qa_chain(llm, chain_type="stuff")
-
-            # Aumentar la longitud máxima de respuesta
-            response = chain.run(input_documents=docs, question=prompt, max_length=500, temperature=0.7)
             
+            # Generar respuesta
+            response = chain.run(input_documents=docs, question=prompt)
             st.markdown(response)
             st.session_state.messages.append({"role": "assistant", "content": response})
         except Exception as e:
