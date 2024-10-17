@@ -22,7 +22,7 @@ def process_files():
             with open(os.path.join("RTE_Procesados", file), 'r', encoding='utf-8') as f:
                 text += f.read() + "\n\n"
     
-    # Divide el texto
+    # Divide el texto en fragmentos
     text_splitter = CharacterTextSplitter(
         separator="\n",
         chunk_size=1000,
@@ -31,8 +31,8 @@ def process_files():
     )
     chunks = text_splitter.split_text(text)
     
-    # Crear embeddings
-    embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2")
+    # Crear embeddings utilizando un modelo más robusto
+    embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-mpnet-base-v2")
     
     # Crear base de datos vectorial
     knowledge_base = FAISS.from_texts(chunks, embeddings)
@@ -61,8 +61,8 @@ if prompt := st.chat_input("Haga su consulta sobre los RTE"):
 
     with st.chat_message("assistant"):
         try:
-            # Buscar documentos relevantes
-            docs = st.session_state.knowledge_base.similarity_search(prompt)
+            # Buscar más documentos relevantes para mejorar las respuestas
+            docs = st.session_state.knowledge_base.similarity_search(prompt, k=5)
             
             # Crear la cadena de QA
             llm = HuggingFaceHub(
@@ -71,7 +71,7 @@ if prompt := st.chat_input("Haga su consulta sobre los RTE"):
             )
             chain = load_qa_chain(llm, chain_type="stuff")
             
-            # Generar respuesta
+            # Generar respuesta basada en los documentos relevantes
             response = chain.run(input_documents=docs, question=prompt)
             st.markdown(response)
             st.session_state.messages.append({"role": "assistant", "content": response})
