@@ -1,10 +1,9 @@
 import streamlit as st
-from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain.embeddings import HuggingFaceEmbeddings
-from langchain.vectorstores import Chroma
-from langchain.memory import ConversationBufferMemory
-from langchain.chains import ConversationalRetrievalChain
-from langchain.llms import HuggingFaceHub
+from langchain.text_splitter import CharacterTextSplitter
+from langchain_community.embeddings import HuggingFaceEmbeddings
+from langchain_community.vectorstores import FAISS
+from langchain.chains.question_answering import load_qa_chain
+from langchain_community.llms import HuggingFaceHub
 import os
 
 # Configuración de la página
@@ -16,67 +15,44 @@ if 'processed_files' not in st.session_state:
     st.session_state.processed_files = False
 
 def process_files():
-    files = []
+    text = ""
     # Lee los archivos TXT de la carpeta RTE_Procesados
     for file in os.listdir("RTE_Procesados"):
         if file.endswith(".txt"):
             with open(os.path.join("RTE_Procesados", file), 'r', encoding='utf-8') as f:
-                files.append(f.read())
+                text += f.read() + "\n\n"
     
-    # Divide el texto en chunks
-    text_splitter = RecursiveCharacterTextSplitter(
+    # Divide el texto
+    text_splitter = CharacterTextSplitter(
+        separator="\n",
         chunk_size=1000,
         chunk_overlap=200,
         length_function=len
     )
-    chunks = text_splitter.create_documents(files)
+    chunks = text_splitter.split_text(text)
     
     # Crear embeddings
-    embeddings = HuggingFaceEmbeddings()
+    embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2")
     
     # Crear base de datos vectorial
-    vectordb = Chroma.from_documents(
-        documents=chunks,
-        embedding=embeddings,
-        persist_directory="vectordb"
-    )
+    knowledge_base = FAISS.from_texts(chunks, embeddings)
     
-    return vectordb
-
-def get_conversation_chain(vectorstore):
-    llm = HuggingFaceHub(
-        repo_id="google/flan-t5-large",
-        huggingfacehub_api_token=os.getenv('HUGGINGFACEHUB_API_TOKEN')
-    )
-    
-    memory = ConversationBufferMemory(
-        memory_key='chat_history',
-        return_messages=True
-    )
-    
-    conversation_chain = ConversationalRetrievalChain.from_llm(
-        llm=llm,
-        retriever=vectorstore.as_retriever(),
-        memory=memory
-    )
-    
-    return conversation_chain
+    return knowledge_base
 
 # Interfaz principal
 if not st.session_state.processed_files:
-    st.info("Procesando archivos RTE...")
-    vectorstore = process_files()
-    st.session_state.conversation = get_conversation_chain(vectorstore)
-    st.session_state.processed_files = True
-    st.success("¡Archivos procesados correctamente!")
+    with st.spinner("Procesando archivos RTE..."):
+        try:
+            knowledge_base = process_files()
+            st.session_state.knowledge_base = knowledge_base
+            st.session_state.processed_files = True
+            st.success("¡Archivos procesados correctamente!")
+        except Exception as e:
+            st.error(f"Error al procesar archivos: {str(e)}")
 
 # Área de chat
 if "messages" not in st.session_state:
     st.session_state.messages = []
-
-for message in st.session_state.messages:
-    with st.chat_message(message["role"]):
-        st.markdown(message["content"])
 
 if prompt := st.chat_input("Haga su consulta sobre los RTE"):
     st.session_state.messages.append({"role": "user", "content": prompt})
@@ -84,6 +60,20 @@ if prompt := st.chat_input("Haga su consulta sobre los RTE"):
         st.markdown(prompt)
 
     with st.chat_message("assistant"):
-        response = st.session_state.conversation({'question': prompt})
-        st.markdown(response['answer'])
-    st.session_state.messages.append({"role": "assistant", "content": response['answer']})
+        try:
+            # Buscar documentos relevantes
+            docs = st.session_state.knowledge_base.similarity_search(prompt)
+            
+            # Crear la cadena de QA
+            llm = HuggingFaceHub(
+                repo_id="google/flan-t5-large",
+                huggingfacehub_api_token=os.getenv('HUGGINGFACEHUB_API_TOKEN')
+            )
+            chain = load_qa_chain(llm, chain_type="stuff")
+            
+            # Generar respuesta
+            response = chain.run(input_documents=docs, question=prompt)
+            st.markdown(response)
+            st.session_state.messages.append({"role": "assistant", "content": response})
+        except Exception as e:
+            st.error(f"Error al procesar la pregunta: {str(e)}")
