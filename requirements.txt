@@ -1,7 +1,7 @@
 streamlit
 langchain
-python-dotenv
-chromadb
+langchain-community
+faiss-cpu
 sentence-transformers
 huggingface-hub
 transformers
