@@ -16,12 +16,23 @@ if 'processed_files' not in st.session_state:
 
 def process_files():
     text = ""
+    # Verifica si hay archivos en la carpeta RTE_Procesados
+    if not os.listdir("RTE_Procesados"):
+        raise Exception("No se encontraron archivos en la carpeta RTE_Procesados.")
+
     # Lee los archivos TXT de la carpeta RTE_Procesados
     for file in os.listdir("RTE_Procesados"):
         if file.endswith(".txt"):
             with open(os.path.join("RTE_Procesados", file), 'r', encoding='utf-8') as f:
-                text += f.read() + "\n\n"
-    
+                file_content = f.read()
+                if file_content.strip():  # Verifica que el archivo no esté vacío
+                    text += file_content + "\n\n"
+                else:
+                    raise Exception(f"El archivo {file} está vacío o no contiene datos válidos.")
+
+    if not text:  # Verifica que se haya leído algún contenido
+        raise Exception("No se encontró contenido válido en los archivos de texto.")
+
     # Divide el texto en fragmentos
     text_splitter = CharacterTextSplitter(
         separator="\n",
@@ -30,7 +41,10 @@ def process_files():
         length_function=len
     )
     chunks = text_splitter.split_text(text)
-    
+
+    if not chunks:  # Verifica que haya fragmentos después de dividir el texto
+        raise Exception("No se pudo dividir el texto en fragmentos adecuados.")
+
     # Crear embeddings utilizando un modelo más robusto
     embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-mpnet-base-v2")
     
@@ -78,4 +92,3 @@ if prompt := st.chat_input("Haga su consulta sobre los RTE"):
             st.session_state.messages.append({"role": "assistant", "content": response})
         except Exception as e:
             st.error(f"Error al procesar la pregunta: {str(e)}")
-
