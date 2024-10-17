@@ -3,3 +3,7 @@ langchain
 python-dotenv
 chromadb
 sentence-transformers
+huggingface-hub
+transformers
+torch
+protobuf
