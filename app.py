@@ -15,27 +15,54 @@ if 'processed_files' not in st.session_state:
     st.session_state.processed_files = False
 
 def process_files():
-    text = ""
+    documents = []
     # Lee los archivos TXT de la carpeta RTE_Procesados
     for file in os.listdir("RTE_Procesados"):
         if file.endswith(".txt"):
             with open(os.path.join("RTE_Procesados", file), 'r', encoding='utf-8') as f:
-                text += f.read() + "\n\n"
+                content = f.read()
+                # Extraer el nombre del RTE del archivo
+                rte_name = file.split('.')[0]  # Asume que el archivo se llama "RTE_030.txt"
+                # Agregar metadata al texto
+                documents.append({"content": content, "source": rte_name})
     
-    # Divide el texto
+    # Divide el texto usando un splitter más específico
     text_splitter = CharacterTextSplitter(
         separator="\n",
-        chunk_size=1000,
-        chunk_overlap=200,
+        chunk_size=500,  # Reducimos el tamaño para mantener contexto más específico
+        chunk_overlap=100,
         length_function=len
     )
-    chunks = text_splitter.split_text(text)
+
+    chunks = []
+    for doc in documents:
+        texts = text_splitter.split_text(doc["content"])
+        # Agregar metadata a cada chunk
+        for text in texts:
+            # Asegurarse de que los títulos importantes se mantengan
+            if "1. OBJETO" in text or "2. CAMPO DE APLICACION" in text:
+                chunk_size = 800  # Chunks más grandes para secciones importantes
+            chunks.append({
+                "content": text,
+                "source": doc["source"],
+                "is_title": "1. OBJETO" in text or "2. CAMPO DE APLICACION" in text
+            })
     
-    # Crear embeddings
-    embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2")
+    # Crear embeddings con modelo multilingüe optimizado
+    embeddings = HuggingFaceEmbeddings(
+        model_name="sentence-transformers/paraphrase-multilingual-mpnet-base-v2",  # Modelo más potente
+        model_kwargs={'device': 'cpu'}
+    )
     
-    # Crear base de datos vectorial
-    knowledge_base = FAISS.from_texts(chunks, embeddings)
+    # Crear base de datos vectorial con metadatos
+    texts = [chunk["content"] for chunk in chunks]
+    metadatas = [{"source": chunk["source"], "is_title": chunk["is_title"]} for chunk in chunks]
+    
+    knowledge_base = FAISS.from_texts(
+        texts, 
+        embeddings, 
+        metadatas=metadatas
+    )
     
     return knowledge_base
 
