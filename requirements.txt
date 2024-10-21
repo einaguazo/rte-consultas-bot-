@@ -2,7 +2,7 @@ streamlit
 langchain
 langchain-community
 faiss-cpu
-sentence-transformers
+sentence-transformers>=2.2.0
 huggingface-hub
 transformers
 torch
